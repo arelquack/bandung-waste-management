@@ -12,20 +12,18 @@ import os
 # Logging untuk memantau proses backend
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-
 # -------------------------
-# Initialize Translators
+# Translator getters (lazy)
 # -------------------------
-# Digunakan untuk menerjemahkan pertanyaan dari Bahasa Indonesia → Inggris
-# dan hasil klasifikasi dari Bahasa Inggris → Indonesia (dua arah)
-try:
-    translator_id_to_en = Translator(to_lang="en", from_lang="id")
-    translator_en_to_id = Translator(to_lang="id", from_lang="en")
-except Exception as e:
-    st.error(f"Gagal menginisialisasi translator: {e}. Pastikan Anda memiliki koneksi internet.")
-    translator_id_to_en = None
-    translator_en_to_id = None
-
+@st.cache_resource
+def get_translators():
+    try:
+        translator_id_to_en = Translator(to_lang="en", from_lang="id")
+        translator_en_to_id = Translator(to_lang="id", from_lang="en")
+        return translator_id_to_en, translator_en_to_id
+    except Exception as e:
+        st.warning(f"Gagal menginisialisasi translator: {e}. Layanan terjemahan akan dinonaktifkan.")
+        return None, None
 
 # -------------------------
 # Component Loader Function
@@ -44,7 +42,7 @@ def load_components():
     logging.info("Memuat komponen: Retriever, Generator, dan Classifier...")
     try:
         retriever = DocumentRetriever(data_path="data/perda_data.pkl")
-        generator = LLMGenerator()
+        generator = LLMGenerator()  # lazy-load model pada pemanggilan pertama
         classifier = joblib.load("data/classifier_model.pkl")
         return retriever, generator, classifier
     except FileNotFoundError as e:
@@ -54,9 +52,8 @@ def load_components():
         st.error(f"Gagal memuat komponen: {e}")
         return None, None, None
 
-# Load komponen hanya satu kali
+# Load komponen hanya satu kali saat dibutuhkan
 retriever, generator, classifier = load_components()
-
 
 # -------------------------
 # Main Chatbot Function
@@ -94,7 +91,6 @@ def run_chatbot(query):
         for i, chunk in enumerate(retrieved_chunks):
             st.text(f"Chunk {i+1}: {chunk[:200]}...")
 
-
 # -------------------------
 # Streamlit UI Layout
 # -------------------------
@@ -104,6 +100,14 @@ st.write("Silakan ajukan pertanyaan tentang pengelolaan sampah sesuai PERDA Kota
 # Input pertanyaan dari user
 query = st.text_input("Tulis pertanyaan Anda di sini:", key="user_query")
 
-# Tombol untuk mengirim pertanyaan ke chatbot
-if st.button("Kirim"):
-    run_chatbot(query)
+col1, col2 = st.columns([1,1])
+with col1:
+    if st.button("Kirim"):
+        run_chatbot(query)
+with col2:
+    if st.button("Uji Terjemahan (opsional)"):
+        ti, te = get_translators()
+        if ti and te:
+            st.success("Translator siap digunakan.")
+        else:
+            st.warning("Translator tidak tersedia saat ini.")

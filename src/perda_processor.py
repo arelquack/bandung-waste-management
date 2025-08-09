@@ -106,7 +106,9 @@ def create_tfidf_index(chunks):
     if not chunks:
         logging.warning("Tidak ada chunks untuk diindeks.")
         return None, None
-    vectorizer = TfidfVectorizer()
+    import numpy as np
+    # gunakan konfigurasi yang lebih efisien dan akurat untuk definisi
+    vectorizer = TfidfVectorizer(dtype=np.float32, sublinear_tf=True, ngram_range=(1, 2), min_df=2, max_df=0.9)
     tfidf_matrix = vectorizer.fit_transform(chunks)
     return vectorizer, tfidf_matrix
 
@@ -210,14 +212,27 @@ def main():
     if vectorizer is None or tfidf_matrix is None:
         logging.error("Gagal membuat TF-IDF index.")
         return
-
-    # 6. Simpan hasil ke dalam file pickle
+    # 6. Simpan hasil ke dalam file terpisah (vectorizer, matrix, chunks)
+    try:
+        from scipy.sparse import save_npz
+        base, _ = os.path.splitext(args.output)
+        vec_path = base + "_vectorizer.pkl"
+        mat_path = base + "_tfidf.npz"
+        chunks_path = base + "_chunks.pkl"
+        # simpan artefak
+        joblib.dump(vectorizer, vec_path, compress=3)
+        save_npz(mat_path, tfidf_matrix)
+        joblib.dump(document_chunks, chunks_path, compress=3)
+        logging.info(f"Artefak disimpan: {vec_path}, {mat_path}, {chunks_path}")
+    except Exception as e:
+        logging.error(f"Gagal menyimpan artefak terpisah: {e}")
+        return
+    # tetap simpan gabungan untuk kompatibilitas mundur
     processed_data = {
         'chunks': document_chunks,
         'vectorizer': vectorizer,
         'tfidf_matrix': tfidf_matrix
     }
-    
     joblib.dump(processed_data, args.output)
     logging.info(f"\nProses selesai. Data berhasil disimpan ke {args.output}")
     logging.info(f"Ukuran TF-IDF matrix: {tfidf_matrix.shape}")
